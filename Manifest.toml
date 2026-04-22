@@ -2,7 +2,7 @@
 
 julia_version = "1.12.5"
 manifest_format = "2.0"
-project_hash = "e7fde0cf263324b17b921151e33061a0c38a3af6"
+project_hash = "63248b69888b78724f9b9ad0f9bd918b0720fa40"
 
 [[deps.AliasTables]]
 deps = ["PtrArrays", "Random"]
@@ -178,6 +178,7 @@ uuid = "2e619515-83b5-522b-bb60-26c02a35a201"
 version = "2.7.3+0"
 
 [[deps.ExperimentSimulation]]
+deps = ["Plots", "Pluto", "Random", "Statistics"]
 path = "."
 uuid = "f2758fbc-05b6-4b37-ae0b-c9871bdf6f82"
 version = "0.1.0"
