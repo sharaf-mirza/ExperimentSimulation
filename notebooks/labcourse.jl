@@ -155,6 +155,7 @@ function euler(f, r0, par, tmax, dt)
     	push!(rs, copy(r))
 
         ### Calculate all parameters of the state array (Hint: use broadcasting)
+		r = r .+ dt .* f(r, par)
     end
 
 	dimensions(r)
@@ -179,6 +180,7 @@ function predictor_corrector(f, r0, par, tmax, dt)
 		r_pred = r .+ dt * f(r, par)
 
         ### Calculate all parameters of the state array (Hint: use broadcasting)
+		r = r .+ 0.5 .* dt .* (f(r, par) .+ f(r_pred, par))
     end
 
 	dimensions(r)
@@ -206,6 +208,7 @@ function runge_kutta_4(f, r0, par, tmax, dt)
         k4 = dt * f(r .+ k3, par)
 
        ### Calculate all parameters of the state array (Hint: use broadcasting, examplle of it is already in this function)
+		r = r .+ (k1 .+ 2 .* k2 .+ 2 .* k3 .+ k4) ./ 6
     end
 
 	dimensions(r)
@@ -227,17 +230,135 @@ begin
 end
 
 # ╔═╡ 224af2f9-e334-4289-8890-46393cc193bc
-rs = runge_kutta_4(eom, r0, par, tmax, dt)
-# rs = euler(eom, r0, par, tmax, dt)
-# rs = predictor_corrector(eom, r0, par, tmax, dt)
+#rs = runge_kutta_4(eom, r0, par, tmax, dt)
+ #rs = euler(eom, r0, par, tmax, dt)
+ #rs = predictor_corrector(eom, r0, par, tmax, dt)
+begin
+	rs_euler = euler(eom, r0, par, tmax, dt)
+    rs_pc = predictor_corrector(eom, r0, par, tmax, dt)
+    rs_rk4 = runge_kutta_4(eom, r0, par, tmax, dt)
+end
 
 # ╔═╡ 96002c68-50b6-409b-ad31-c2a7967414b0
-[r[1] for r in rs] ### E.g. to access the array of time steps
+### E.g. to access the array of time steps 
+begin
+	t_euler = [r[1] for r in rs_euler]
+    x_euler = [r[2] for r in rs_euler]
+    y_euler = [r[3] for r in rs_euler]
+	z_euler = [r[4] for r in rs_euler]
+	En_euler = [r[5] for r in rs_euler]
+
+    t_pc = [r[1] for r in rs_pc]
+    x_pc = [r[2] for r in rs_pc]
+    y_pc = [r[3] for r in rs_pc]
+	z_pc = [r[4] for r in rs_pc]
+	En_pc = [r[5] for r in rs_pc]
+
+    t_rk4 = [r[1] for r in rs_rk4]
+    x_rk4 = [r[2] for r in rs_rk4]
+    y_rk4 = [r[3] for r in rs_rk4]
+	z_rk4 = [r[4] for r in rs_rk4]
+	En_rk4 = [r[5] for r in rs_rk4]
+
+
+end
 
 # ╔═╡ 5a3cdea5-5140-43cb-a609-ae96161967ce
 ### Plot trajectory of the particle: x(t), y(t), z(t), (x,y)(t), x,y(z)
 ### Check that energy conserves, plot En(t)
 ### Repeat this for all three methods and compare trajectories.
+begin
+
+	#plot x(t)
+    px = plot(t_euler, x_euler, label="Euler", xlabel="t", ylabel="x", title="x(t)")
+    plot!(px, t_pc, x_pc, label="Predictor-Corrector")
+    plot!(px, t_rk4, x_rk4, label="RK4")
+
+	#plot y(t)
+    py = plot(t_euler, y_euler, label="Euler", xlabel="t", ylabel="y", title="y(t)")
+    plot!(py, t_pc, y_pc, label="Predictor-Corrector")
+    plot!(py, t_rk4, y_rk4, label="RK4")
+
+	#plot z(t)
+	pz = plot(t_euler, z_euler, label="Euler", xlabel="t", ylabel="z", title="z(t)")
+    plot!(pz, t_pc, z_pc, label="Predictor-Corrector")
+    plot!(pz, t_rk4, z_rk4, label="RK4")
+
+	#plot (x,y)(t)
+	    ptraj = plot(x_euler, y_euler, label="Euler", xlabel="x", ylabel="y", title="Particle trajectory in (x,y) plane")
+	plot!(ptraj, x_pc, y_pc, label="Predictor-Corrector")
+	plot!(ptraj, x_rk4, y_rk4, label="RK4")
+
+    plot(px, py, pz, ptraj, layout=(2,2), size=(900,900))
+end
+
+# ╔═╡ 0e9d6cb1-e037-46e1-908d-a67850b34139
+begin
+	# plot x(z)
+	pxz = plot(
+	    z_euler,
+	    x_euler,
+	    label="Euler",
+	    xlabel="z",
+	    ylabel="x",
+	    title="x(z)"
+	)
+	
+	plot!(pxz, z_pc, x_pc, label="Predictor-Corrector")
+	plot!(pxz, z_rk4, x_rk4, label="RK4")
+	
+	
+	# plot y(z)
+	pyz = plot(
+	    z_euler,
+	    y_euler,
+	    label="Euler",
+	    xlabel="z",
+	    ylabel="y",
+	    title="y(z)"
+	)
+	
+	plot!(pyz, z_pc, y_pc, label="Predictor-Corrector")
+	plot!(pyz, z_rk4, y_rk4, label="RK4")
+
+	plot(pxz, pyz, layout=(1,2), size=(950,500))
+end
+
+# ╔═╡ f4c4ceb6-a68f-47e0-930e-96dc91232567
+begin
+	p3d = plot(
+	    x_euler,
+	    y_euler,
+	    z_euler,
+	    label="Euler",
+	    xlabel="x",
+	    ylabel="y",
+	    zlabel="z",
+	    title="3D trajectory",
+	    lw=2,
+		size =(600,600)
+	)
+	
+	plot!(p3d, x_pc, y_pc, z_pc, label="Predictor-Corrector")
+	plot!(p3d, x_rk4, y_rk4, z_rk4, label="RK4")
+end
+
+# ╔═╡ 63bfaaf3-645d-4b33-95bf-9c2f4c65b2a0
+begin
+	pEn = plot(
+	    t_euler,
+	    En_euler,
+	    label="Euler",
+	    xlabel="t",
+	    ylabel="Energy",
+	    title="Energy conservation"
+	)
+	
+	plot!(pEn, t_pc, En_pc, label="Predictor-Corrector")
+	plot!(pEn, t_rk4, En_rk4, label="RK4")
+	
+	pEn
+end
 
 # ╔═╡ 042212eb-684d-446b-9785-3c127ad9f732
 md"""
@@ -1934,6 +2055,9 @@ version = "1.4.1+1"
 # ╠═224af2f9-e334-4289-8890-46393cc193bc
 # ╠═96002c68-50b6-409b-ad31-c2a7967414b0
 # ╠═5a3cdea5-5140-43cb-a609-ae96161967ce
+# ╠═0e9d6cb1-e037-46e1-908d-a67850b34139
+# ╠═f4c4ceb6-a68f-47e0-930e-96dc91232567
+# ╠═63bfaaf3-645d-4b33-95bf-9c2f4c65b2a0
 # ╠═042212eb-684d-446b-9785-3c127ad9f732
 # ╠═39481270-26dc-4eb3-9fd1-d83ac1f4bf03
 # ╠═ddefd433-a462-4fd9-807f-8e3a45cf07f5
