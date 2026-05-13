@@ -27,6 +27,7 @@ begin
 	using Unitful
 	using LinearAlgebra
 	using Distributions
+	using LsqFit
 end
 
 # ╔═╡ efdd6d2d-2f5b-49a6-910b-098899bc59e3
@@ -121,9 +122,15 @@ function eom(r, par)
     dpy_GeV = dpy / (GeV_to_J * c_1 / c)
     dpz_GeV = dpz / (GeV_to_J * c_1 / c)
 
+	# Energy derivative: dE/dt = q * v ⋅ E
+	dEn = q * ((vx * Ex) + (vy * Ey) + (vz * Ez))
+
+	# Convert J/s to GeV/s
+	dEn_GeV = dEn / GeV_to_J
+
 
     # Return derivatives: [dt/dt, dx/dt, dy/dt, dz/dt, dEn/dt, dpx/dt, dpy/dt, dpz/dt]
-    return [1.0u"s/s", vx, vy, vz, 0.0u"GeV/s", dpx_GeV, dpy_GeV, dpz_GeV]
+    return [1.0u"s/s", vx, vy, vz, dEn_GeV, dpx_GeV, dpy_GeV, dpz_GeV]
 end
 
 # ╔═╡ 096a3b73-bdce-4a38-9ce0-bb186601c2e4
@@ -238,6 +245,9 @@ begin
     rs_pc = predictor_corrector(eom, r0, par, tmax, dt)
     rs_rk4 = runge_kutta_4(eom, r0, par, tmax, dt)
 end
+
+# ╔═╡ f99daddf-bc57-427d-a87c-3b9da7d116f9
+rs_euler
 
 # ╔═╡ 96002c68-50b6-409b-ad31-c2a7967414b0
 ### E.g. to access the array of time steps 
@@ -381,12 +391,38 @@ end
 num_samples = 10000
 
 # ╔═╡ 5d352f88-8d33-4d0d-ad57-9bbb99773831
-pdf = histogram(bin_positions, weights=bin_contents, bins=62, xlabel="Mass (MeV/c²)", ylabel="Candidates", title="Histogram of Resonance Data", legend=false)
+
+	pdf = histogram(bin_positions, weights=bin_contents, bins=62, xlabel="Mass (MeV/c²)", ylabel="Candidates", title="Histogram of Resonance Data", legend=false)
+
+
+# ╔═╡ c4813601-5633-46f0-9a7a-bc0edc62e364
+md"""
+* The cumulative distribution function (CDF) is obtained by calculating the normalized cumulative sum of the histogram bin contents.
+
+```math
+CDF_k =
+\frac{
+\sum_{i=1}^{k} p_i
+}{
+\sum_{i=1}^{N} p_i
+} 
+```
+"""
 
 # ╔═╡ 7df5fae0-614e-4c36-a073-680e7aaec332
 begin
-	cdf_values = ### Calculate CDF based on PDF
-	cdf = histogram(bin_positions, weights=cdf_values, bins=62, xlabel="Mass (MeV/c²)", ylabel="Candidates", title="CDF of Resonance Data", legend=false)
+	cdf_values = cumsum(bin_contents) ./ sum(bin_contents)### Calculate CDF based on PDF
+	plot(
+    bin_positions,
+    cdf_values,
+    seriestype = :steppost,
+    fillrange = 0,
+    fillcolor = :lightblue,
+    xlabel = "Mass (MeV/c²)",
+    ylabel = "CDF",
+    title = "CDF of Resonance Data",
+    legend = false
+)
 end
 
 # ╔═╡ 459b7567-d5fc-464d-9561-3c5141469df9
@@ -399,7 +435,9 @@ function hit_and_miss_sampling(bin_contents, bin_positions, num_samples)
 		random_x = trunc(Int, rand() * (lastindex(bin_positions)-1) + 1)
 		random_y = rand() * max_bin_content
 		
-    	### Position of hit is already set by (random_x,random_y), implement check whether it ahould be accepted or not
+    	if random_y <= bin_contents[random_x]
+    		accepted_samples_hm[random_x] += 1
+		end ### Position of hit is already set by (random_x,random_y), implement check whether it ahould be accepted or not
 	end
 	return accepted_samples_hm
 end
@@ -407,7 +445,19 @@ end
 # ╔═╡ 3567a205-65fb-4a28-a4f1-4334587e510d
 begin
 	accepted_samples_hm = hit_and_miss_sampling(bin_contents, bin_positions, num_samples)
+
+
 	### Plot histogram with the simulated sample
+	histogram(
+        bin_positions,
+        weights=accepted_samples_hm,
+        bins=length(bin_positions),
+        xlabel="Mass (MeV/c²)",
+        ylabel="Counts",
+        title="Hit-or-Miss Monte Carlo",
+        label="Simulated sample"
+    )
+	
 end
 
 # ╔═╡ 93a82374-9227-401e-b875-c453e08ddafa
@@ -416,7 +466,9 @@ end
 function inverse_cdf_sampling(cdf_values, bin_positions, num_samples)
 	accepted_samples_inv = zeros(lastindex(bin_positions))
 	for i in 1:num_samples
-		### Implement sampling of random variable u which is needed for inverse CDF method
+
+	
+		u= rand()### Implement sampling of random variable u which is needed for inverse CDF method
         accepted_samples_inv[findfirst(>=(u), cdf_values)] = accepted_samples_inv[findfirst(>=(u), cdf_values)] + 1
 	end
 	return accepted_samples_inv
@@ -425,7 +477,17 @@ end
 # ╔═╡ d339e66c-6c43-46fd-af99-dc7a8eb6520d
 begin
 	accepted_samples_inv = inverse_cdf_sampling(cdf_values, bin_positions, num_samples)
+
 	### Plot histogram with the simulated sample
+	histogram(
+        bin_positions,
+        weights=accepted_samples_inv,
+        bins=length(bin_positions),
+        xlabel="Mass (MeV/c²)",
+        ylabel="Counts",
+        title="Inverse CDF Monte Carlo",
+        label="Simulated sample"
+    )
 end
 
 # ╔═╡ b85856c4-b722-4f0c-a3f3-7566938173da
@@ -447,29 +509,129 @@ function chi2(sample, data)
         throw(ArgumentError("Histograms must have the same number of bins"))
     end
 	
-    chi2_values = ### Implement calculation of chi2 values (Hint: use broadcasting or implement loop)
+    chi2_values = (data .- sample).^2### Implement calculation of chi2 values (Hint: use broadcasting or implement loop)
     sum(chi2_values)
 end
 
 # ╔═╡ b0b544b1-e26c-49d8-87cf-1002142534c7
-chi2_hm = ### Calculate chi2 of Hit and miss method
+begin
+	### Calculate chi2 of Hit and miss method
+	data_norm = bin_contents ./ sum(bin_contents)
+	hm_norm = accepted_samples_hm ./ sum(accepted_samples_hm)
+	
+	chi2_hm = chi2(hm_norm, data_norm)
+end
 
 # ╔═╡ 7c274fb6-ccfe-484e-9c5b-321225186cb6
-chi2_inv = ### Calculate chi2 of Inverse CDF method
+begin
+	inv_norm = accepted_samples_inv ./ sum(accepted_samples_inv)
+	chi2_inv = chi2(inv_norm, data_norm)### Calculate chi2 of Inverse CDF method
+end
 
 # ╔═╡ d2c1d638-f2c1-4834-9235-a9d55dbaa866
 function efficiency(sample, num_samples)
-	### Implement calculation of efficiency
+	return sum(sample)/num_samples ### Implement calculation of efficiency
 end
 
 # ╔═╡ 6bb3a02f-4882-4626-9417-f3aa07521eb6
-eff_hm = ### Calculate efficiency of Hit and miss method
+eff_hm = efficiency(accepted_samples_hm, num_samples)### Calculate efficiency of Hit and miss method
 
 # ╔═╡ 9431493e-8a10-4af6-904b-c1a03625932c
-eff_inv = ### Calculate efficiency of Inverse CDF method
+eff_inv = efficiency(accepted_samples_inv, num_samples) ### Calculate efficiency of Inverse CDF method
+
+# ╔═╡ 9d1ebe41-42bc-40c3-91f8-10a5d9707b66
+md"""
+## Comparison of Monte Carlo methods
+
+The Hit-or-Miss method generates random points in a rectangular region and accepts only points lying below the probability density function. Therefore, many generated points are rejected, which reduces the efficiency.
+
+The inverse CDF method directly generates samples according to the target probability distribution using the cumulative distribution function. This avoids rejected samples and is therefore more efficient.
+
+The quality of both methods can be evaluated using the ``\chi^2`` value between the generated and original distributions.
+
+In general:
+- the inverse CDF method has higher efficiency,
+- the inverse CDF method converges faster,
+- the Hit-or-Miss method is conceptually simpler but computationally slower.
+"""
 
 # ╔═╡ 33074b6a-c172-4544-a575-0649e7664632
 ### Compare performances of the two methods
+let
+	sample_sizes = [10, 1000, 10000]
+	
+	for N in sample_sizes
+	
+	    hm = hit_and_miss_sampling(bin_contents, bin_positions, N)
+	    inv = inverse_cdf_sampling(cdf_values, bin_positions, N)
+	
+	    hm_norm = hm ./ sum(hm)
+	    inv_norm = inv ./ sum(inv)
+	    data_norm = bin_contents ./ sum(bin_contents)
+	
+	    chi2_hm = chi2(hm_norm, data_norm)
+	    chi2_inv = chi2(inv_norm, data_norm)
+	
+	    eff_hm = sum(hm) / N
+	    eff_inv = sum(inv) / N
+	
+	    println("N = ", N)
+	
+	    println("Hit-or-Miss:")
+	    println("   efficiency = ", eff_hm)
+	    println("   chi2 = ", chi2_hm)
+	
+	    println("Inverse CDF:")
+	    println("   efficiency = ", eff_inv)
+	    println("   chi2 = ", chi2_inv)
+	
+	end
+end
+
+# ╔═╡ a3ea2044-932e-44c4-b5c6-77fdf355333f
+md"""
+## Discussion of the Monte Carlo methods
+
+The efficiency of the hit-or-miss method remains approximately constant for increasing sample size. This is expected because the efficiency is determined mainly by the ratio between the area under the probability density function and the total sampling region.
+
+The inverse CDF method has efficiency equal to 1 because every generated random number is accepted.
+
+For increasing sample size, the ``\chi^2`` values decrease for both methods, indicating that the sampled distributions converge toward the original resonance distribution.
+
+The inverse CDF method produces consistently smaller ``\chi^2`` values than the hit-or-miss method, demonstrating faster convergence and better computational performance.
+"""
+
+# ╔═╡ c13d949e-ebff-42bf-9d10-751b79e2a764
+md"""
+## Estimation of the resonance parameters
+
+"""
+
+# ╔═╡ c5ce4cb8-36be-42cd-87e4-d371f1220075
+begin
+    max_index = argmax(bin_contents)
+    resonance_mass = bin_positions[max_index]
+
+    half_max = maximum(bin_contents) / 2
+    indices_half_max = findall(bin_contents .>= half_max)
+
+    left_index = first(indices_half_max)
+    right_index = last(indices_half_max)
+
+    resonance_width = bin_positions[right_index] - bin_positions[left_index]
+
+    println("Estimated resonance mass = ", resonance_mass, " MeV/c²")
+    println("Estimated width FWHM = ", resonance_width, " MeV/c²")
+end
+
+# ╔═╡ 9a3f63ca-6dd8-410d-84fc-33f9a88f011b
+md"""
+he resonance mass was estimated from the position of the maximum of the experimental distribution. The resonance width was estimated using the full width at half maximum (FWHM) of the peak.
+
+The obtained resonance mass is close to the known mass of the ``J/\psi``  particle reported by the Particle Data Group, approximately ``3.097GeV/c^2``. The estimated width is also consistent with the narrow resonance structure expected for the ``J/\psi``  particle.
+
+Small deviations between the estimated values and the PDG values are expected due to finite binning of the histogram and statistical fluctuations in the sampled dataset.
+"""
 
 # ╔═╡ a86ea674-31a0-4285-9d33-84ffbdedeabd
 md"""
@@ -532,7 +694,8 @@ function momentum_from_circle(point1, point2, q, B)
 
     R = norm(d_perp) / (2 * sqrt(abs(1 - abs(cos_theta)) / 2))
 	p = sqrt(norm(p2_par)^2 + (q * norm(B) * R)^2)
-	uconvert(u"GeV/c", p)
+	p = uconvert(u"GeV/c", p)
+
 
     return R, p
 end
@@ -566,7 +729,7 @@ function momentum_from_radius(R, q, B)
 
     # Calculate the momentum p using p = qBr
     p = q * B * R
-	uconvert(u"GeV/c", p)
+	p = uconvert(u"GeV/c", p)
 	
     return p
 end
@@ -625,7 +788,7 @@ begin
 	par_minus = [-e, m_mu, E_exp, B_exp]
 	par_plus = [e, m_mu, E_exp, B_exp]
 	
-	M_mumu = ### Simulate invariant mass of the J/psi using function from the Exersice 2
+	M_mumu = sample_values(cdf_values, bin_positions, Nevents) ### Simulate invariant mass of the J/psi using function from the Exersice 2
 	M_mumu .= M_mumu .* 1.0u"GeV/c^2" ./ 1000.0
 	M_mumu_sim = []
 	pmu_minus = []
@@ -633,9 +796,167 @@ begin
 	pmu_minus_sim = []
 	pmu_plus_sim = []
 	
+	
 	for M in M_mumu
-		### Using functions provided in this exersice, implement simulation of the J/psi decay into two muons, simulate trajectory of the muons with Runge-Kutta method and reconstruct muons momenta. Fill all the arrays, initialized above. Compare reconstructed momenta with initial.
+
+	### Using functions provided in this exersice, implement simulation of the J/psi decay into two muons, simulate trajectory of the muons with Runge-Kutta method and reconstruct muons momenta. Fill all the arrays, initialized above. Compare reconstructed momenta with initial.
+	p_minus, p_plus = jpsi_to_mumu(M)
+
+	push!(M_mumu_sim, jpsi_from_mumu(p_minus, p_plus))
+
+	push!(pmu_minus, norm(p_minus[2:4]))
+	push!(pmu_plus, norm(p_plus[2:4]))
+
+	r0_minus = [tmu0, xmu0, ymu0, zmu0, p_minus[1], p_minus[2], p_minus[3], p_minus[4]]
+	r0_plus  = [tmu0, xmu0, ymu0, zmu0, p_plus[1],  p_plus[2],  p_plus[3],  p_plus[4]]
+
+	rs_minus = runge_kutta_4(eom, r0_minus, par_minus, tmumax, dtmu)
+	rs_plus  = runge_kutta_4(eom, r0_plus,  par_plus,  tmumax, dtmu)
+		
+	
+		
+	R_minus, p_minus_rec = momentum_from_circle(rs_minus[1], rs_minus[2], e, B_exp)
+	R_plus,  p_plus_rec  = momentum_from_circle(rs_plus[1],  rs_plus[2],  e, B_exp)
+
+	push!(pmu_minus_sim, p_minus_rec)
+	push!(pmu_plus_sim, p_plus_rec)
+	
 	end
+end
+
+# ╔═╡ c380b32e-a8c9-470c-952d-4ecb5ed5dd09
+begin
+	rel_err_minus = abs.(pmu_minus .- pmu_minus_sim) ./ pmu_minus
+	rel_err_plus  = abs.(pmu_plus  .- pmu_plus_sim)  ./ pmu_plus
+
+	println("Muon minus:")
+	println("initial p = ", pmu_minus)
+	println("reconstructed p = ", pmu_minus_sim)
+	println("relative error = ", rel_err_minus)
+
+	println("\nMuon plus:")
+	println("initial p = ", pmu_plus)
+	println("reconstructed p = ", pmu_plus_sim)
+	println("relative error = ", rel_err_plus)
+end
+
+# ╔═╡ d9b49708-85ab-4a84-a1bb-11de29785309
+begin
+	M_mumu_reco = []
+
+	for i in 1:Nevents
+		p_minus = pmu_minus_sim[i]
+		p_plus  = pmu_plus_sim[i]
+
+		E_minus = sqrt(c_1^2 * p_minus^2 + c_1^4 * m_mu^2)
+		E_plus  = sqrt(c_1^2 * p_plus^2  + c_1^4 * m_mu^2)
+
+		M_reco = (E_minus + E_plus) / c_1^2
+		push!(M_mumu_reco, uconvert(u"GeV/c^2", M_reco))
+	end
+
+	M_mumu_reco
+end
+
+# ╔═╡ 901582fb-35a1-492c-8132-c9c809d351e6
+begin
+	mass_rel_err = abs.(M_mumu .- M_mumu_reco) ./ M_mumu
+
+	println("Generated J/ψ masses:")
+	println(M_mumu)
+
+	println("\nReconstructed J/ψ masses:")
+	println(M_mumu_reco)
+
+	println("\nRelative mass error:")
+	println(mass_rel_err)
+end
+
+# ╔═╡ aaa535c9-55ee-432e-b41d-63a8a59e47f6
+begin
+	M_gen = [ustrip(u"GeV/c^2", m) for m in M_mumu]
+	M_rec = [ustrip(u"GeV/c^2", m) for m in M_mumu_reco]
+
+	plot(
+		1:Nevents,
+		M_gen,
+		label = "generated",
+		xlabel = "Event",
+		ylabel = "M(J/ψ) [GeV/c²]",
+		title = "Generated vs reconstructed J/ψ mass",
+		marker = :circle
+	)
+
+	plot!(
+		1:Nevents,
+		M_rec,
+		label = "reconstructed",
+		marker = :diamond
+	)
+end
+
+# ╔═╡ 655a0eb4-840e-4e51-936d-8204c6946e85
+begin
+	
+	histogram(
+		M_gen,
+		bins = 10,
+		alpha = 0.5,
+		label = "generated",
+		xlabel = "M(J/ψ) [GeV/c²]",
+		ylabel = "Counts",
+		title = "Generated vs reconstructed J/ψ mass"
+	)
+
+	histogram!(
+		M_rec,
+		bins = 10,
+		alpha = 0.5,
+		label = "reconstructed"
+	)
+end
+
+# ╔═╡ 52cccc36-56c3-4784-b9bb-763cc5cbfaba
+begin
+	tmumax_plot = 9.0u"ns"
+	dtmu_plot = 0.05u"ns"
+
+	M = mean(M_mumu)
+	p_minus, p_plus = jpsi_to_mumu(M)
+
+	r0_minus = [tmu0, xmu0, ymu0, zmu0, p_minus[1], p_minus[2], p_minus[3], p_minus[4]]
+	r0_plus  = [tmu0, xmu0, ymu0, zmu0, p_plus[1],  p_plus[2],  p_plus[3],  p_plus[4]]
+
+	rs_minus = runge_kutta_4(eom, r0_minus, par_minus, tmumax_plot, dtmu_plot)
+	rs_plus  = runge_kutta_4(eom, r0_plus,  par_plus,  tmumax_plot, dtmu_plot)
+
+	x_minus = [r[2] for r in rs_minus]
+	y_minus = [r[3] for r in rs_minus]
+	z_minus = [r[4] for r in rs_minus]
+
+	x_plus = [r[2] for r in rs_plus]
+	y_plus = [r[3] for r in rs_plus]
+	z_plus = [r[4] for r in rs_plus]
+
+	plot(
+		x_minus,
+		y_minus,
+		z_minus,
+		label = "μ⁻",
+		xlabel = "x",
+		ylabel = "y",
+		zlabel = "z",
+		title = "Muon trajectories in magnetic field",
+		lw = 2
+	)
+
+	plot!(
+		x_plus,
+		y_plus,
+		z_plus,
+		label = "μ⁺",
+		lw = 2
+	)
 end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
@@ -645,6 +966,7 @@ CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+LsqFit = "2fda8390-95c7-5789-9bda-21331edee243"
 Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
@@ -655,6 +977,7 @@ Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"
 CSV = "~0.10.14"
 DataFrames = "~1.7.0"
 Distributions = "~0.25.112"
+LsqFit = "~0.16.0"
 Plots = "~1.40.8"
 PlutoUI = "~0.7.59"
 Unitful = "~1.21.0"
@@ -666,13 +989,42 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.12.6"
 manifest_format = "2.0"
-project_hash = "a6af0dfe7a1ba3d8ddf257feec2f56a668dbdf33"
+project_hash = "35d101232238ff3b96f3a4f1569e73d7b10017de"
+
+[[deps.ADTypes]]
+git-tree-sha1 = "bbc22a9a08a0ef6460041086d8a7b27940ed4ffd"
+uuid = "47edcb42-4c32-4615-8424-f2b9edc5f35b"
+version = "1.22.0"
+
+    [deps.ADTypes.extensions]
+    ADTypesChainRulesCoreExt = "ChainRulesCore"
+    ADTypesConstructionBaseExt = "ConstructionBase"
+    ADTypesEnzymeCoreExt = "EnzymeCore"
+
+    [deps.ADTypes.weakdeps]
+    ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
+    ConstructionBase = "187b0558-2788-49d3-abe0-74a17ed4e7c9"
+    EnzymeCore = "f151be2c-9106-41f4-ab19-57ee4f262869"
 
 [[deps.AbstractPlutoDingetjes]]
 deps = ["Pkg"]
 git-tree-sha1 = "6e1d2a35f2f90a4bc7c2ed98079b2ba09c35b83a"
 uuid = "6e696c72-6542-2067-7265-42206c756150"
 version = "1.3.2"
+
+[[deps.Adapt]]
+deps = ["LinearAlgebra", "Requires"]
+git-tree-sha1 = "0761717147821d696c9470a7a86364b2fbd22fd8"
+uuid = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
+version = "4.5.2"
+
+    [deps.Adapt.extensions]
+    AdaptSparseArraysExt = "SparseArrays"
+    AdaptStaticArraysExt = "StaticArrays"
+
+    [deps.Adapt.weakdeps]
+    SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
+    StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 
 [[deps.AliasTables]]
 deps = ["PtrArrays", "Random"]
@@ -683,6 +1035,42 @@ version = "1.1.3"
 [[deps.ArgTools]]
 uuid = "0dad84c5-d112-42e6-8d28-ef12dabb789f"
 version = "1.1.2"
+
+[[deps.ArrayInterface]]
+deps = ["Adapt", "LinearAlgebra"]
+git-tree-sha1 = "54f895554d05c83e3dd59f6a396671dae8999573"
+uuid = "4fba245c-0d91-5ea0-9b3e-6abc04ee57a9"
+version = "7.24.0"
+
+    [deps.ArrayInterface.extensions]
+    ArrayInterfaceAMDGPUExt = "AMDGPU"
+    ArrayInterfaceBandedMatricesExt = "BandedMatrices"
+    ArrayInterfaceBlockBandedMatricesExt = "BlockBandedMatrices"
+    ArrayInterfaceCUDAExt = "CUDA"
+    ArrayInterfaceCUDSSExt = ["CUDSS", "CUDA"]
+    ArrayInterfaceChainRulesCoreExt = "ChainRulesCore"
+    ArrayInterfaceChainRulesExt = "ChainRules"
+    ArrayInterfaceGPUArraysCoreExt = "GPUArraysCore"
+    ArrayInterfaceMetalExt = "Metal"
+    ArrayInterfaceReverseDiffExt = "ReverseDiff"
+    ArrayInterfaceSparseArraysExt = "SparseArrays"
+    ArrayInterfaceStaticArraysCoreExt = "StaticArraysCore"
+    ArrayInterfaceTrackerExt = "Tracker"
+
+    [deps.ArrayInterface.weakdeps]
+    AMDGPU = "21141c5a-9bdb-4563-92ae-f87d6854732e"
+    BandedMatrices = "aae01518-5342-5314-be14-df237901396f"
+    BlockBandedMatrices = "ffab5731-97b5-5995-9138-79e8c1846df0"
+    CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
+    CUDSS = "45b445bb-4962-46a0-9369-b4df9d0f772e"
+    ChainRules = "082447d4-558c-5d27-93f4-14fc19e9eca2"
+    ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
+    GPUArraysCore = "46192b85-c4d5-4398-a991-12ede77f4527"
+    Metal = "dde4c033-4e86-420c-a63e-0dd931031962"
+    ReverseDiff = "37e2e3b7-166d-5795-8a7a-e32c996b4267"
+    SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
+    StaticArraysCore = "1e83bf80-4336-4d27-bf5d-d5a4f845583c"
+    Tracker = "9f7883ad-71c0-57eb-9f7f-b5c9e6d3789c"
 
 [[deps.Artifacts]]
 uuid = "56f22d72-fd6d-98f1-02f0-08ddc0907c33"
@@ -749,6 +1137,12 @@ git-tree-sha1 = "362a287c3aa50601b0bc359053d5c2468f0e7ce0"
 uuid = "5ae59095-9a9b-59fe-a467-6f913c188581"
 version = "0.12.11"
 
+[[deps.CommonSubexpressions]]
+deps = ["MacroTools"]
+git-tree-sha1 = "cda2cfaebb4be89c9084adaca7dd7333369715c5"
+uuid = "bbf7d656-a473-5ed7-a52c-81e309532950"
+version = "0.3.1"
+
 [[deps.Compat]]
 deps = ["TOML", "UUIDs"]
 git-tree-sha1 = "8ae8d32e09f0dcf42a36b90d4e17f5dd2e4c4215"
@@ -769,6 +1163,21 @@ deps = ["Serialization", "Sockets"]
 git-tree-sha1 = "ea32b83ca4fefa1768dc84e504cc0a94fb1ab8d1"
 uuid = "f0e56b4a-5159-44fe-b623-3e5288b988bb"
 version = "2.4.2"
+
+[[deps.ConstructionBase]]
+git-tree-sha1 = "b4b092499347b18a015186eae3042f72267106cb"
+uuid = "187b0558-2788-49d3-abe0-74a17ed4e7c9"
+version = "1.6.0"
+
+    [deps.ConstructionBase.extensions]
+    ConstructionBaseIntervalSetsExt = "IntervalSets"
+    ConstructionBaseLinearAlgebraExt = "LinearAlgebra"
+    ConstructionBaseStaticArraysExt = "StaticArrays"
+
+    [deps.ConstructionBase.weakdeps]
+    IntervalSets = "8197267c-284f-5f27-9208-e0e47529a953"
+    LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+    StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 
 [[deps.Contour]]
 git-tree-sha1 = "439e35b0b36e2e5881738abc8857bd92ad6ff9a8"
@@ -818,6 +1227,69 @@ deps = ["Mmap"]
 git-tree-sha1 = "9e2f36d3c96a820c678f2f1f1782582fcf685bae"
 uuid = "8bb1440f-4735-579b-a4ab-409b98df4dab"
 version = "1.9.1"
+
+[[deps.DiffResults]]
+deps = ["StaticArraysCore"]
+git-tree-sha1 = "782dd5f4561f5d267313f23853baaaa4c52ea621"
+uuid = "163ba53b-c6d8-5494-b064-1a9d43ac40c5"
+version = "1.1.0"
+
+[[deps.DiffRules]]
+deps = ["IrrationalConstants", "LogExpFunctions", "NaNMath", "Random", "SpecialFunctions"]
+git-tree-sha1 = "23163d55f885173722d1e4cf0f6110cdbaf7e272"
+uuid = "b552c78f-8df3-52c6-915a-8e097449b14b"
+version = "1.15.1"
+
+[[deps.DifferentiationInterface]]
+deps = ["ADTypes", "LinearAlgebra"]
+git-tree-sha1 = "d0250552e42bf7cc36479fd38a6e30004c9e8c2b"
+uuid = "a0c0ee7d-e4b9-4e03-894e-1c5f64a51d63"
+version = "0.7.17"
+
+    [deps.DifferentiationInterface.extensions]
+    DifferentiationInterfaceChainRulesCoreExt = "ChainRulesCore"
+    DifferentiationInterfaceDiffractorExt = "Diffractor"
+    DifferentiationInterfaceEnzymeExt = ["EnzymeCore", "Enzyme"]
+    DifferentiationInterfaceFastDifferentiationExt = "FastDifferentiation"
+    DifferentiationInterfaceFiniteDiffExt = "FiniteDiff"
+    DifferentiationInterfaceFiniteDifferencesExt = "FiniteDifferences"
+    DifferentiationInterfaceForwardDiffExt = ["ForwardDiff", "DiffResults"]
+    DifferentiationInterfaceGPUArraysCoreExt = ["GPUArraysCore", "Adapt"]
+    DifferentiationInterfaceGTPSAExt = "GTPSA"
+    DifferentiationInterfaceMooncakeExt = "Mooncake"
+    DifferentiationInterfacePolyesterForwardDiffExt = ["PolyesterForwardDiff", "ForwardDiff", "DiffResults"]
+    DifferentiationInterfaceReverseDiffExt = ["ReverseDiff", "DiffResults"]
+    DifferentiationInterfaceSparseArraysExt = "SparseArrays"
+    DifferentiationInterfaceSparseConnectivityTracerExt = "SparseConnectivityTracer"
+    DifferentiationInterfaceSparseMatrixColoringsExt = "SparseMatrixColorings"
+    DifferentiationInterfaceStaticArraysExt = "StaticArrays"
+    DifferentiationInterfaceSymbolicsExt = "Symbolics"
+    DifferentiationInterfaceTrackerExt = "Tracker"
+    DifferentiationInterfaceZygoteExt = ["Zygote", "ForwardDiff"]
+
+    [deps.DifferentiationInterface.weakdeps]
+    Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
+    ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
+    DiffResults = "163ba53b-c6d8-5494-b064-1a9d43ac40c5"
+    Diffractor = "9f5e2b26-1114-432f-b630-d3fe2085c51c"
+    Enzyme = "7da242da-08ed-463a-9acd-ee780be4f1d9"
+    EnzymeCore = "f151be2c-9106-41f4-ab19-57ee4f262869"
+    FastDifferentiation = "eb9bf01b-bf85-4b60-bf87-ee5de06c00be"
+    FiniteDiff = "6a86dc24-6348-571c-b903-95158fe2bd41"
+    FiniteDifferences = "26cc04aa-876d-5657-8c51-4c34ba976000"
+    ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
+    GPUArraysCore = "46192b85-c4d5-4398-a991-12ede77f4527"
+    GTPSA = "b27dd330-f138-47c5-815b-40db9dd9b6e8"
+    Mooncake = "da2b9cff-9c12-43a0-ae48-6db2b0edb7d6"
+    PolyesterForwardDiff = "98d1487c-24ca-40b6-b7ab-df2af84e126b"
+    ReverseDiff = "37e2e3b7-166d-5795-8a7a-e32c996b4267"
+    SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
+    SparseConnectivityTracer = "9f842d2f-2579-4b1d-911e-f412cf18a3f5"
+    SparseMatrixColorings = "0a514795-09f3-496d-8182-132a7b665d35"
+    StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
+    Symbolics = "0c5d862f-8b57-4792-8d23-62f2024744c7"
+    Tracker = "9f7883ad-71c0-57eb-9f7f-b5c9e6d3789c"
+    Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
 [[deps.Distributions]]
 deps = ["AliasTables", "FillArrays", "LinearAlgebra", "PDMats", "Printf", "QuadGK", "Random", "SpecialFunctions", "Statistics", "StatsAPI", "StatsBase", "StatsFuns"]
@@ -903,6 +1375,24 @@ weakdeps = ["PDMats", "SparseArrays", "Statistics"]
     FillArraysSparseArraysExt = "SparseArrays"
     FillArraysStatisticsExt = "Statistics"
 
+[[deps.FiniteDiff]]
+deps = ["ArrayInterface", "LinearAlgebra", "Setfield"]
+git-tree-sha1 = "f7017a4f337f8df189fcce98e32b67a1298a2115"
+uuid = "6a86dc24-6348-571c-b903-95158fe2bd41"
+version = "2.31.0"
+
+    [deps.FiniteDiff.extensions]
+    FiniteDiffBandedMatricesExt = "BandedMatrices"
+    FiniteDiffBlockBandedMatricesExt = "BlockBandedMatrices"
+    FiniteDiffSparseArraysExt = "SparseArrays"
+    FiniteDiffStaticArraysExt = "StaticArrays"
+
+    [deps.FiniteDiff.weakdeps]
+    BandedMatrices = "aae01518-5342-5314-be14-df237901396f"
+    BlockBandedMatrices = "ffab5731-97b5-5995-9138-79e8c1846df0"
+    SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
+    StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
+
 [[deps.FixedPointNumbers]]
 deps = ["Statistics"]
 git-tree-sha1 = "05882d6995ae5c12bb5f36dd2ed3f61c98cbb172"
@@ -919,6 +1409,18 @@ version = "2.13.96+0"
 git-tree-sha1 = "9c68794ef81b08086aeb32eeaf33531668d5f5fc"
 uuid = "1fa38f19-a742-5d3f-a2b9-30dd87b9d5f8"
 version = "1.3.7"
+
+[[deps.ForwardDiff]]
+deps = ["CommonSubexpressions", "DiffResults", "DiffRules", "LinearAlgebra", "LogExpFunctions", "NaNMath", "Preferences", "Printf", "Random", "SpecialFunctions"]
+git-tree-sha1 = "cddeab6487248a39dae1a960fff0ac17b2a28888"
+uuid = "f6369f11-7733-5829-9624-2563aa707210"
+version = "1.3.3"
+
+    [deps.ForwardDiff.extensions]
+    ForwardDiffStaticArraysExt = "StaticArrays"
+
+    [deps.ForwardDiff.weakdeps]
+    StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 
 [[deps.FreeType2_jll]]
 deps = ["Artifacts", "Bzip2_jll", "JLLWrappers", "Libdl", "Zlib_jll"]
@@ -1229,6 +1731,12 @@ git-tree-sha1 = "c1dd6d7978c12545b4179fb6153b9250c96b0075"
 uuid = "e6f89c97-d47a-5376-807f-9c37f3926c36"
 version = "1.0.3"
 
+[[deps.LsqFit]]
+deps = ["ADTypes", "Distributions", "ForwardDiff", "LinearAlgebra", "NLSolversBase", "Printf", "StatsAPI"]
+git-tree-sha1 = "938aaa27db65e619e19aadd58fbae44fbb0d83e7"
+uuid = "2fda8390-95c7-5789-9bda-21331edee243"
+version = "0.16.0"
+
 [[deps.MIMEs]]
 git-tree-sha1 = "65f28ad4b594aebe22157d6fac869786a255b7eb"
 uuid = "6c6e2e6c-3030-632d-7369-2d6c69616d65"
@@ -1275,6 +1783,12 @@ version = "1.11.0"
 [[deps.MozillaCACerts_jll]]
 uuid = "14a3606d-f60d-562e-9121-12d972cd8159"
 version = "2025.11.4"
+
+[[deps.NLSolversBase]]
+deps = ["ADTypes", "DifferentiationInterface", "FiniteDiff", "LinearAlgebra"]
+git-tree-sha1 = "b3f76b463c7998473062992b246045e6961a074e"
+uuid = "d41bc354-129a-5804-8e4c-c37616107c6c"
+version = "8.0.0"
 
 [[deps.NaNMath]]
 deps = ["OpenLibm_jll"]
@@ -1552,6 +2066,12 @@ version = "1.4.5"
 uuid = "9e88b42a-f829-5b0c-bbe9-9e923198166b"
 version = "1.11.0"
 
+[[deps.Setfield]]
+deps = ["ConstructionBase", "Future", "MacroTools", "StaticArraysCore"]
+git-tree-sha1 = "c5391c6ace3bc430ca630251d02ea9687169ca68"
+uuid = "efcf1570-3423-57d1-acb7-fd33fddbac46"
+version = "1.1.2"
+
 [[deps.Showoff]]
 deps = ["Dates", "Grisu"]
 git-tree-sha1 = "91eddf657aca81df9ae6ceb20b959ae5653ad1de"
@@ -1589,6 +2109,11 @@ version = "2.4.0"
 
     [deps.SpecialFunctions.weakdeps]
     ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
+
+[[deps.StaticArraysCore]]
+git-tree-sha1 = "6ab403037779dae8c514bad259f32a447262455a"
+uuid = "1e83bf80-4336-4d27-bf5d-d5a4f845583c"
+version = "1.4.4"
 
 [[deps.Statistics]]
 deps = ["LinearAlgebra"]
@@ -2053,6 +2578,7 @@ version = "1.4.1+1"
 # ╠═096a3b73-bdce-4a38-9ce0-bb186601c2e4
 # ╠═01ffa2e0-d25d-4694-aed7-537b4535e1ab
 # ╠═224af2f9-e334-4289-8890-46393cc193bc
+# ╠═f99daddf-bc57-427d-a87c-3b9da7d116f9
 # ╠═96002c68-50b6-409b-ad31-c2a7967414b0
 # ╠═5a3cdea5-5140-43cb-a609-ae96161967ce
 # ╠═0e9d6cb1-e037-46e1-908d-a67850b34139
@@ -2063,6 +2589,7 @@ version = "1.4.1+1"
 # ╠═ddefd433-a462-4fd9-807f-8e3a45cf07f5
 # ╠═01e2eca6-ae5c-4bf1-a22a-cea64b869d9b
 # ╠═5d352f88-8d33-4d0d-ad57-9bbb99773831
+# ╠═c4813601-5633-46f0-9a7a-bc0edc62e364
 # ╠═7df5fae0-614e-4c36-a073-680e7aaec332
 # ╠═459b7567-d5fc-464d-9561-3c5141469df9
 # ╠═3567a205-65fb-4a28-a4f1-4334587e510d
@@ -2075,7 +2602,12 @@ version = "1.4.1+1"
 # ╠═d2c1d638-f2c1-4834-9235-a9d55dbaa866
 # ╠═6bb3a02f-4882-4626-9417-f3aa07521eb6
 # ╠═9431493e-8a10-4af6-904b-c1a03625932c
+# ╟─9d1ebe41-42bc-40c3-91f8-10a5d9707b66
 # ╠═33074b6a-c172-4544-a575-0649e7664632
+# ╟─a3ea2044-932e-44c4-b5c6-77fdf355333f
+# ╟─c13d949e-ebff-42bf-9d10-751b79e2a764
+# ╠═c5ce4cb8-36be-42cd-87e4-d371f1220075
+# ╟─9a3f63ca-6dd8-410d-84fc-33f9a88f011b
 # ╟─a86ea674-31a0-4285-9d33-84ffbdedeabd
 # ╠═2e8ccf97-d9f8-4683-8ad6-c9e2cdbbf80c
 # ╠═a69583de-164d-40c3-9562-134cdd19f6c5
@@ -2086,5 +2618,11 @@ version = "1.4.1+1"
 # ╠═dc286863-bf42-40e0-974b-e3f229dcf2d5
 # ╠═3ba42e77-8b8e-49d7-9def-ad35a56bea19
 # ╠═230f7f9a-d2b8-4e56-ae57-5e1aafa41678
+# ╠═c380b32e-a8c9-470c-952d-4ecb5ed5dd09
+# ╠═d9b49708-85ab-4a84-a1bb-11de29785309
+# ╠═901582fb-35a1-492c-8132-c9c809d351e6
+# ╠═aaa535c9-55ee-432e-b41d-63a8a59e47f6
+# ╠═655a0eb4-840e-4e51-936d-8204c6946e85
+# ╠═52cccc36-56c3-4784-b9bb-763cc5cbfaba
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
