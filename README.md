@@ -53,18 +53,6 @@ The project demonstrates basic concepts used in high-energy particle detectors a
 
 ---
 
-# Technologies Used
-
-- Julia
-- Pluto.jl
-- Plots.jl
-- CSV.jl
-- DataFrames.jl
-- Unitful.jl
-- Distributions.jl
-
----
-
 # Running the Project
 
 ## Install Pluto
