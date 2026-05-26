@@ -42,7 +42,7 @@ md"""
 #### Charge and Mass
 **Charge**: ``q`` = $(@bind q_e Slider(-5.0:0.1:5.0, default=1.0, show_value=true)) elementary charges
 
-**Mass**: ``m`` = $(@bind m Slider(0.0u"GeV/c^2":0.1u"GeV/c^2":20.0u"GeV/c^2", default=1.0u"GeV/c^2", show_value=true))
+**Mass**: ``m`` = $(@bind m Slider(0.0u"GeV/c^2":0.1u"GeV/c^2":20.0u"GeV/c^2", default=1.0u"MeV/c^2", show_value=true))
 
 #### Electric Field
 
@@ -280,7 +280,7 @@ end
 begin
 
 	#plot x(t)
-    px = plot(t_euler, x_euler, label="Euler", xlabel="t", ylabel="x", title="x(t)")
+    px = plot(t_euler, x_euler, label="Euler", xlabel="t", ylabel="x", title="x(t)", dpi = 300)
     plot!(px, t_pc, x_pc, label="Predictor-Corrector")
     plot!(px, t_rk4, x_rk4, label="RK4")
 
@@ -299,8 +299,9 @@ begin
 	plot!(ptraj, x_pc, y_pc, label="Predictor-Corrector")
 	plot!(ptraj, x_rk4, y_rk4, label="RK4")
 
-    plot(px, py, pz, ptraj, layout=(2,2), size=(900,900))
-end
+	plot(px, py, pz, ptraj, layout=(2,2), size=(900,900))
+
+	end
 
 # ╔═╡ 0e9d6cb1-e037-46e1-908d-a67850b34139
 begin
@@ -355,6 +356,7 @@ end
 
 # ╔═╡ 63bfaaf3-645d-4b33-95bf-9c2f4c65b2a0
 begin
+	
 	pEn = plot(
 	    t_euler,
 	    En_euler,
@@ -391,9 +393,10 @@ end
 num_samples = 10000
 
 # ╔═╡ 5d352f88-8d33-4d0d-ad57-9bbb99773831
-
-	pdf = histogram(bin_positions, weights=bin_contents, bins=62, xlabel="Mass (MeV/c²)", ylabel="Candidates", title="Histogram of Resonance Data", legend=false)
-
+begin
+	
+		pdf = histogram(bin_positions, weights=bin_contents, bins=62, xlabel="Mass (MeV/c²)", ylabel="Candidates", title="PDF of Resonance Data", legend=false)
+end
 
 # ╔═╡ c4813601-5633-46f0-9a7a-bc0edc62e364
 md"""
@@ -422,7 +425,8 @@ begin
     ylabel = "CDF",
     title = "CDF of Resonance Data",
     legend = false
-)
+	)
+
 end
 
 # ╔═╡ 459b7567-d5fc-464d-9561-3c5141469df9
@@ -872,12 +876,18 @@ begin
 	println(mass_rel_err)
 end
 
+# ╔═╡ 0b0d3e30-2995-4f51-985c-740f2b36030f
+begin
+	println("mean relative error = ", mean(mass_rel_err))
+	println("max relative error = ", maximum(mass_rel_err))
+end
+
 # ╔═╡ aaa535c9-55ee-432e-b41d-63a8a59e47f6
 begin
 	M_gen = [ustrip(u"GeV/c^2", m) for m in M_mumu]
 	M_rec = [ustrip(u"GeV/c^2", m) for m in M_mumu_reco]
 
-	plot(
+	plt= plot(
 		1:Nevents,
 		M_gen,
 		label = "generated",
@@ -887,18 +897,20 @@ begin
 		marker = :circle
 	)
 
-	plot!(
+	plot!(plt,
 		1:Nevents,
 		M_rec,
 		label = "reconstructed",
 		marker = :diamond
 	)
+
+
 end
 
 # ╔═╡ 655a0eb4-840e-4e51-936d-8204c6946e85
 begin
 	
-	histogram(
+	u=histogram(
 		M_gen,
 		bins = 10,
 		alpha = 0.5,
@@ -938,7 +950,7 @@ begin
 	y_plus = [r[3] for r in rs_plus]
 	z_plus = [r[4] for r in rs_plus]
 
-	plot(
+	mu= plot(
 		x_minus,
 		y_minus,
 		z_minus,
@@ -2569,7 +2581,7 @@ version = "1.4.1+1"
 # ╔═╡ Cell order:
 # ╠═ac552774-8faa-11ef-257f-ad04db824377
 # ╟─efdd6d2d-2f5b-49a6-910b-098899bc59e3
-# ╟─33699dc6-4d43-480f-905e-2674db611b22
+# ╠═33699dc6-4d43-480f-905e-2674db611b22
 # ╠═cc9d7ea9-91ce-472c-abfe-a67d8d55403e
 # ╠═0aee2d4a-42fb-4569-b199-d7535d811baa
 # ╠═884fc9f1-139a-49c4-bb0e-735715db0e84
@@ -2602,7 +2614,7 @@ version = "1.4.1+1"
 # ╠═d2c1d638-f2c1-4834-9235-a9d55dbaa866
 # ╠═6bb3a02f-4882-4626-9417-f3aa07521eb6
 # ╠═9431493e-8a10-4af6-904b-c1a03625932c
-# ╟─9d1ebe41-42bc-40c3-91f8-10a5d9707b66
+# ╠═9d1ebe41-42bc-40c3-91f8-10a5d9707b66
 # ╠═33074b6a-c172-4544-a575-0649e7664632
 # ╟─a3ea2044-932e-44c4-b5c6-77fdf355333f
 # ╟─c13d949e-ebff-42bf-9d10-751b79e2a764
@@ -2621,6 +2633,7 @@ version = "1.4.1+1"
 # ╠═c380b32e-a8c9-470c-952d-4ecb5ed5dd09
 # ╠═d9b49708-85ab-4a84-a1bb-11de29785309
 # ╠═901582fb-35a1-492c-8132-c9c809d351e6
+# ╠═0b0d3e30-2995-4f51-985c-740f2b36030f
 # ╠═aaa535c9-55ee-432e-b41d-63a8a59e47f6
 # ╠═655a0eb4-840e-4e51-936d-8204c6946e85
 # ╠═52cccc36-56c3-4784-b9bb-763cc5cbfaba
