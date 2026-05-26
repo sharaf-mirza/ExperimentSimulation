@@ -47,7 +47,6 @@ The project demonstrates basic concepts used in high-energy particle detectors a
 ├── labcourse.jl        # Main Pluto notebook
 ├── Exercise2_fit.jl    # MC Simulation from curve fitting (not complete yet)
 ├── resonance.dat       # Experimental resonance dataset
-├── Versuch108.pdf      # Official experiment manual
 ├── README.md           # Repository documentation
 ```
 
