@@ -1,6 +1,6 @@
-# Simulation of Physics Processes — Experiment 108
+# Simulation of the Physics Experimet — Experiment 108
 
-This repository contains the implementation and analysis for **Experiment 108: Simulation of Physics Processes** from the Advanced Physics Lab Course at Ruhr-University Bochum.
+This repository contains the implementation and analysis for **Experiment 108: Simulation of the Physics Experiment** from the Advanced Physics Lab Course at Ruhr-University Bochum.
 
 The project focuses on numerical and statistical methods widely used in modern experimental and particle physics. The implementation is written in **Julia** using **Pluto notebooks** and combines numerical differential equation solving, Monte Carlo simulations, and particle decay reconstruction.
 
@@ -25,7 +25,7 @@ Implementation of Monte Carlo sampling techniques for resonance mass distributio
 - Acceptance-Rejection (Hit-and-Miss) Sampling
 - Inverse CDF Sampling
 
-The simulated distributions are compared with experimental resonance data using efficiency calculations and χ² analysis.
+The simulated distributions are compared with experimental resonance data using efficiency calculations and x² analysis.
 
 ---
 
