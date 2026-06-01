@@ -1,4 +1,4 @@
-# Simulation of the Physics Experimet — Experiment 108
+# Simulation of the Physics Experimet
 
 This repository contains the implementation and analysis for **Experiment 108: Simulation of the Physics Experiment** from the Advanced Physics Lab Course at Ruhr-University Bochum.
 
