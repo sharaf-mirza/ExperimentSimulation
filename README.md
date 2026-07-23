@@ -40,7 +40,7 @@ The project demonstrates basic concepts used in high-energy particle detectors a
 
 ---
 
-Here is the link to the [overleaf project](https://www.overleaf.com/read/kmvbvnkrkbdn#b84e23) for the complete report with our results.
+Here is the link to the [overleaf project](https://www.overleaf.com/read/kmvbvnkrkbdn#b84e23) for the complete [report](https://docs.google.com/presentation/d/1DzV3ogqxVMMGg3idwRza6z4xLCitaVp5BpwI62AlnOo/edit?usp=sharing) with our results.
 
 ---
 
