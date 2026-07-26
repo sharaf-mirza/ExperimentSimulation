@@ -29,8 +29,8 @@ The simulated distributions are compared with experimental resonance data using 
 
 ---
 
-### 3. \(J/\psi \rightarrow \mu^+\mu^-\) Decay Simulation
-Simulation of the decay of a \(J/\psi\) particle into two muons, including:
+### 3. $J/\psi \rightarrow \mu^+ \mu^-$ Decay Simulation
+Simulation of the decay of a $J/\psi$ particle into two muons, including:
 - generation of decay kinematics,
 - propagation of muons in a magnetic field,
 - reconstruction of muon momenta from circular trajectories,
