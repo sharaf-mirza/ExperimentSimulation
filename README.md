@@ -36,7 +36,7 @@ Simulation of the decay of a \(J/\psi\) particle into two muons, including:
 - reconstruction of muon momenta from circular trajectories,
 - invariant mass reconstruction.
 
-The project demonstrates basic concepts used in high-energy particle detectors and tracking systems.
+The [project](https://www.overleaf.com/9456833178pzszgywdcknk#51f3ea) demonstrates basic concepts used in high-energy particle detectors and tracking systems.
 
 ---
 
