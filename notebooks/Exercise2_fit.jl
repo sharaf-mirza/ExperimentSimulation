@@ -16,16 +16,24 @@ begin
 	using LinearAlgebra
 	using Distributions
 	using LsqFit
+
+	# Load a fresh copy of the shared module when this cell is re-evaluated.
+	# The explicit assignment lets Pluto track the dependent function aliases.
+	simulation = let
+		source = Module(:NotebookSimulationSource)
+		Base.include(source, joinpath(@__DIR__, "..", "src", "ExperimentSimulation.jl"))
+		Base.invokelatest(getfield, source, :ExperimentSimulation)
+	end
 end
 
 # ╔═╡ 6d52a078-04d8-4800-a534-da8f9d7c9712
 md"""
-# Exersice 2: MC Simulation of the resonance mass wit Fit
+# Exercise 2: MC Simulation of the resonance mass with Fit
 """
 
 # ╔═╡ 2447f0ea-3eb7-4e51-b454-11fd79873cc7
 begin
-	file_path = "./resonance.dat"
+	file_path = joinpath(@__DIR__, "..", "data", "resonance.dat")
 	data = CSV.read(file_path, DataFrame, delim='\t')
 end
 
@@ -50,17 +58,7 @@ f(x)=A\frac{\Gamma^2/4}{(x-m_0)^2+\Gamma^2/4}+(a+bx)
 """
 
 # ╔═╡ a27971b9-3413-4404-b851-d40c71ba275b
-function model(x, p)
-    A, m0, Γ, a, b = p
-
-    signal =
-        A .* ((Γ^2 / 4) ./ ((x .- m0).^2 .+ Γ^2 / 4))
-
-    background =
-        a .+ b .* x
-
-    return signal .+ background
-end
+model = simulation.model
 
 # ╔═╡ 4b006b80-4419-41a4-9bd4-9fea6796c9cc
 #Initial fit Parameters: 
@@ -149,30 +147,7 @@ fitted_pdf(x) = model(x, p_fit)
 num_samples = 100000
 
 # ╔═╡ 8c27dc0b-27d3-4490-ae61-0840d886f5c1
-function hit_and_miss_continuous(fit_function, xfit, yfit, num_samples=num_samples)
-
-    x_min = minimum(xfit)
-    x_max = maximum(xfit)
-    ymax  = maximum(yfit)
-
-    accepted_samples = Float64[]
-
-    for i in 1:num_samples
-
-        # sample continuous x
-        x = rand() * (x_max - x_min) + x_min
-
-        # sample y
-        y = rand() * ymax
-
-        # acceptance-rejection
-        if y <= fit_function(x)
-            push!(accepted_samples, x)
-        end
-    end
-
-    return accepted_samples
-end
+hit_and_miss_continuous = simulation.hit_and_miss_continuous
 
 # ╔═╡ 36593dfd-4d5a-417d-8192-a34d2aeb6b25
 accepted_samples_hm_fit = hit_and_miss_continuous(fitted_pdf, xfit, yfit, num_samples)

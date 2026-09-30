@@ -1,4 +1,4 @@
-# Simulation of the Physics Experimet
+# Simulation of the Physics Experiment
 
 This repository contains the implementation and analysis for **Experiment 108: Simulation of the Physics Experiment** from the Advanced Physics Lab Course at Ruhr-University Bochum.
 
@@ -48,32 +48,103 @@ Here is the link to the [overleaf project](https://www.overleaf.com/read/kmvbvnk
 
 ```text
 .
-├── labcourse.jl        # Main Pluto notebook
-├── Exercise2_fit.jl    # MC Simulation from curve fitting (not complete yet)
-├── resonance.dat       # Experimental resonance dataset
-├── README.md           # Repository documentation
+├── Project.toml                    # Package and Pluto launcher dependencies
+├── Manifest.toml                   # Locked root environment
+├── README.md
+├── src/
+│   ├── ExperimentSimulation.jl     # Module entry point and shared constants
+│   ├── ode_solvers.jl              # Equations of motion and three ODE solvers
+│   ├── resonance_sampling.jl       # Discrete Monte Carlo sampling and comparisons
+│   ├── resonance_fit.jl            # Fit model and continuous hit-and-miss sampling
+│   └── decay_reconstruction.jl     # Decay kinematics and momentum reconstruction
+├── notebooks/
+│   ├── labcourse.jl                # Main interactive lab workflow, exercises 1–3
+│   └── Exercise2_fit.jl            # Supplementary curve-fitting workflow (in progress)
+├── data/
+│   └── resonance.dat              # Experimental input dataset
+├── figures/
+│   └── 3D_traj.png                 # Saved trajectory figure
+└── test/
+    └── runtests.jl                 # Numerical and sampling tests
 ```
 
 ---
 
 # Running the Project
 
-## Install Pluto
-```julia
-using Pkg
-Pkg.add("Pluto")
+Use **Julia 1.12**; the checked-in environments were generated with Julia 1.12.6.
+Clone the repository and install the root environment from the repository folder:
+
+```sh
+git clone https://github.com/sharaf-mirza/ExperimentSimulation.git
+cd ExperimentSimulation
+julia --project=. -e 'using Pkg; Pkg.instantiate()'
+julia --project=. -e 'using Pluto; Pluto.run()'
 ```
 
-## Start Pluto
-```julia
-using Pluto
-Pluto.run()
-```
+In Pluto, open either notebook:
 
-Then open:
 ```text
-labcourse.jl
+notebooks/labcourse.jl
+notebooks/Exercise2_fit.jl
 ```
+
+### How dependencies and paths work
+
+The root `Project.toml` and `Manifest.toml` provide the shared package environment
+and launch Pluto. Each notebook keeps its own embedded Pluto project and manifest;
+Pluto installs and manages that notebook's analysis and plotting dependencies
+automatically. Additional dependencies such as CSV, DataFrames, PlutoUI, and LsqFit
+therefore belong to the notebook environments. Keep Pluto's generated environment
+cells and cell-order metadata intact when editing the exported `.jl` files.
+
+Both notebooks load the shared module from `src/` and read the dataset from `data/`
+using paths relative to the notebook file. Launching Pluto from another working
+directory does not change those paths. Keep the repository folders together when
+sharing a notebook. Re-run the notebook's first setup cell after editing `src/`
+to load the updated functions.
+
+### Use the shared functions without Pluto
+
+From the repository folder, start `julia --project=.` and run:
+
+```julia
+using ExperimentSimulation
+using Random
+using Unitful
+
+# Generate and reconstruct a J/psi decay using a repeatable random stream.
+rng = MersenneTwister(108)
+p_minus, p_plus = jpsi_to_mumu(3.097u"GeV/c^2"; rng)
+reconstructed_mass = jpsi_from_mumu(p_minus, p_plus)
+```
+
+The ODE functions use the lab's state layout
+`[t, x, y, z, energy, px, py, pz]` and parameters `[charge, mass, E, B]` with
+Unitful quantities. Sampling and decay functions accept an optional `rng` keyword;
+omitting it uses Julia's default random stream, as in the interactive notebooks.
+
+### Run tests
+
+```sh
+julia --project=. -e 'using Pkg; Pkg.test()'
+```
+
+The tests check ODE convergence against an analytic solution, uniform motion in
+zero fields, sampling frequencies and the final histogram bin, decay momentum
+balance and invariant mass, and a known circular-track reconstruction case.
+They also check invalid time steps and repeatability with a seeded RNG.
+
+### Scientific scope
+
+The shared module retains the lab notebook's equations and reconstruction
+approximations. Extracting them into `src/` does not constitute a full validation
+of the physics. The existing `chi2` helper computes a sum of squared residuals;
+its name is retained for compatibility, but this score is not a statistical
+chi-square. The fitting notebook remains a supplementary workflow in progress.
+
+Input data belongs in `data/`; saved figures belong in `figures/`. Temporary
+figure exports can go in `figures/generated/`, which is ignored by Git.
 
 ---
 

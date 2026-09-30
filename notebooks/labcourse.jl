@@ -28,11 +28,19 @@ begin
 	using LinearAlgebra
 	using Distributions
 	using LsqFit
+
+	# Load a fresh copy of the shared module when this cell is re-evaluated.
+	# The explicit assignment lets Pluto track the dependent function aliases.
+	simulation = let
+		source = Module(:NotebookSimulationSource)
+		Base.include(source, joinpath(@__DIR__, "..", "src", "ExperimentSimulation.jl"))
+		Base.invokelatest(getfield, source, :ExperimentSimulation)
+	end
 end
 
 # ╔═╡ efdd6d2d-2f5b-49a6-910b-098899bc59e3
 md"""
-# Exersice 1: Methods of solving ODE
+# Exercise 1: Methods of solving ODE
 """
 
 # ╔═╡ 33699dc6-4d43-480f-905e-2674db611b22
@@ -84,144 +92,31 @@ md"""
 
 # ╔═╡ cc9d7ea9-91ce-472c-abfe-a67d8d55403e
 begin
-	const GeV_to_J = 1.60218e-10u"J/GeV"
-	const c = 299792458u"m/s"
-	const c_1 = 1.0u"c"
+	const GeV_to_J = simulation.GeV_to_J
+	const c = simulation.c
+	const c_1 = simulation.c_1
 end
 
 # ╔═╡ 0aee2d4a-42fb-4569-b199-d7535d811baa
 # Equations of motion
 
-function eom(r, par)
-    # Unpack the variables from the state vector u
-    # r = [t, x, y, z, E, px, py, pz]
-    t, x, y, z = r[1], r[2], r[3], r[4]
-    En, px, py, pz = r[5], r[6], r[7], r[8]
-
-    # Unpack parameters
-    q, m_GeV, E, B = par
-
-    m = m_GeV * GeV_to_J * c_1^2 / c^2
-    px_si = px * GeV_to_J * c_1 / c
-    py_si = py * GeV_to_J * c_1 / c
-    pz_si = pz * GeV_to_J * c_1 / c
-
-    vx = px_si / m
-    vy = py_si / m
-    vz = pz_si / m
-    Ex, Ey, Ez = E[1], E[2], E[3]
-    Bx, By, Bz = B[1], B[2], B[3]
-
-    # Lorentz force in SI units (momentum derivatives) using F = q * (E + v × B)
-    dpx = q * (Ex + vy * Bz - vz * By)
-    dpy = q * (Ey + vz * Bx - vx * Bz)
-    dpz = q * (Ez + vx * By - vy * Bx)
-
-    # Convert the force back to GeV/c for updating momentum
-    dpx_GeV = dpx / (GeV_to_J * c_1 / c)
-    dpy_GeV = dpy / (GeV_to_J * c_1 / c)
-    dpz_GeV = dpz / (GeV_to_J * c_1 / c)
-
-	# Energy derivative: dE/dt = q * v ⋅ E
-	dEn = q * ((vx * Ex) + (vy * Ey) + (vz * Ez))
-
-	# Convert J/s to GeV/s
-	dEn_GeV = dEn / GeV_to_J
-
-
-    # Return derivatives: [dt/dt, dx/dt, dy/dt, dz/dt, dEn/dt, dpx/dt, dpy/dt, dpz/dt]
-    return [1.0u"s/s", vx, vy, vz, dEn_GeV, dpx_GeV, dpy_GeV, dpz_GeV]
-end
+eom = simulation.eom
 
 # ╔═╡ 096a3b73-bdce-4a38-9ce0-bb186601c2e4
 # To keep state vector in the right dimension
-function dimensions(r)
-	r[1] = uconvert(u"ns",    r[1])
-	r[2] = uconvert(u"m",     r[2])
-	r[3] = uconvert(u"m",     r[3])
-	r[4] = uconvert(u"m",     r[4])
-	r[5] = uconvert(u"GeV",   r[5])
-	r[6] = uconvert(u"GeV/c", r[6])
-	r[7] = uconvert(u"GeV/c", r[7])
-	r[8] = uconvert(u"GeV/c", r[8])
-    return r
-end
+dimensions = simulation.dimensions
 
 # ╔═╡ 884fc9f1-139a-49c4-bb0e-735715db0e84
 # Euler method
-function euler(f, r0, par, tmax, dt)
-    ts = (r0[1]+dt):dt:tmax  # Time steps
-    n = length(ts)   # Number of steps
-    r = copy(r0)     # Initial condition
-    rs = []          # To store the trajectory
-	m = par[2]
-
-    # Iterate through each time step
-    for t in ts
-        dimensions(r)
-    	push!(rs, copy(r))
-
-        ### Calculate all parameters of the state array (Hint: use broadcasting)
-		r = r .+ dt .* f(r, par)
-    end
-
-	dimensions(r)
-    push!(rs, copy(r))
-    return rs
-end
+euler = simulation.euler
 
 # ╔═╡ 4173869b-55f8-458f-8789-af44d022ebfd
 # Predictor-corrector method
-function predictor_corrector(f, r0, par, tmax, dt)
-    ts = (r0[1]+dt):dt:tmax  # Time steps
-    n = length(ts)   # Number of steps
-    r = copy(r0)     # Initial condition
-    rs = []          # To store the trajectory
-	m = par[2]
-
-    # Iterate through each time step
-    for t in ts
-        dimensions(r)
-   		push!(rs, copy(r))
-
-		r_pred = r .+ dt * f(r, par)
-
-        ### Calculate all parameters of the state array (Hint: use broadcasting)
-		r = r .+ 0.5 .* dt .* (f(r, par) .+ f(r_pred, par))
-    end
-
-	dimensions(r)
-    push!(rs, copy(r))
-    return rs
-end
+predictor_corrector = simulation.predictor_corrector
 
 # ╔═╡ acf9c865-02a4-488c-b0b2-11c9adbe4f83
 # Runge-Kutta (RK4) method
-function runge_kutta_4(f, r0, par, tmax, dt)
-    ts = (r0[1]+dt):dt:tmax  # Time steps
-    n = length(ts)   # Number of steps
-    r = copy(r0)     # Initial condition
-    rs = []          # To store the trajectory
-	m = par[2]
-
-    # Iterate through each time step
-    for t in ts
-		dimensions(r)
-        push!(rs, copy(r))
-
-        k1 = dt * f(r, par)
-        k2 = dt * f(r .+ 0.5 .* k1, par)
-        k3 = dt * f(r .+ 0.5 .* k2, par)
-        k4 = dt * f(r .+ k3, par)
-
-       ### Calculate all parameters of the state array (Hint: use broadcasting, examplle of it is already in this function)
-		r = r .+ (k1 .+ 2 .* k2 .+ 2 .* k3 .+ k4) ./ 6
-    end
-
-	dimensions(r)
-    push!(rs, copy(r))
-    return rs
-end
+runge_kutta_4 = simulation.runge_kutta_4
 
 # ╔═╡ 01ffa2e0-d25d-4694-aed7-537b4535e1ab
 begin
@@ -374,12 +269,12 @@ end
 
 # ╔═╡ 042212eb-684d-446b-9785-3c127ad9f732
 md"""
-# Exersice 2: MC Simulation of the resonance mass
+# Exercise 2: MC Simulation of the resonance mass
 """
 
 # ╔═╡ 39481270-26dc-4eb3-9fd1-d83ac1f4bf03
 begin
-	file_path = "./resonance.dat"
+	file_path = joinpath(@__DIR__, "..", "data", "resonance.dat")
 	data = CSV.read(file_path, DataFrame, delim='\t')
 end
 
@@ -432,19 +327,7 @@ end
 # ╔═╡ 459b7567-d5fc-464d-9561-3c5141469df9
 # Hit and miss method
 
-function hit_and_miss_sampling(bin_contents, bin_positions, num_samples)	
-	max_bin_content = maximum(bin_contents)
-	accepted_samples_hm = zeros(lastindex(bin_positions))
-	for i in 1:num_samples
-		random_x = trunc(Int, rand() * (lastindex(bin_positions)-1) + 1)
-		random_y = rand() * max_bin_content
-		
-    	if random_y <= bin_contents[random_x]
-    		accepted_samples_hm[random_x] += 1
-		end ### Position of hit is already set by (random_x,random_y), implement check whether it ahould be accepted or not
-	end
-	return accepted_samples_hm
-end
+hit_and_miss_sampling = simulation.hit_and_miss_sampling
 
 # ╔═╡ 3567a205-65fb-4a28-a4f1-4334587e510d
 begin
@@ -467,16 +350,7 @@ end
 # ╔═╡ 93a82374-9227-401e-b875-c453e08ddafa
 # Inverse CDF method
 
-function inverse_cdf_sampling(cdf_values, bin_positions, num_samples)
-	accepted_samples_inv = zeros(lastindex(bin_positions))
-	for i in 1:num_samples
-
-	
-		u= rand()### Implement sampling of random variable u which is needed for inverse CDF method
-        accepted_samples_inv[findfirst(>=(u), cdf_values)] = accepted_samples_inv[findfirst(>=(u), cdf_values)] + 1
-	end
-	return accepted_samples_inv
-end
+inverse_cdf_sampling = simulation.inverse_cdf_sampling
 
 # ╔═╡ d339e66c-6c43-46fd-af99-dc7a8eb6520d
 begin
@@ -497,25 +371,10 @@ end
 # ╔═╡ b85856c4-b722-4f0c-a3f3-7566938173da
 # Function to simulate mass of the resonance based on inverse CDF
 
-function sample_values(cdf_values, bin_positions, events)
-	values = []
-	for i in 1:events
-		u = rand()
-        push!(values, copy(bin_positions[findfirst(>=(u), cdf_values)]))
-	end
-	return values
-end
+sample_values = simulation.sample_values
 
 # ╔═╡ 1b9921eb-746b-4fdf-b5e2-f83c87c989e5
-function chi2(sample, data)
-	
-    if length(sample) != length(data)
-        throw(ArgumentError("Histograms must have the same number of bins"))
-    end
-	
-    chi2_values = (data .- sample).^2### Implement calculation of chi2 values (Hint: use broadcasting or implement loop)
-    sum(chi2_values)
-end
+chi2 = simulation.chi2
 
 # ╔═╡ b0b544b1-e26c-49d8-87cf-1002142534c7
 begin
@@ -533,9 +392,7 @@ begin
 end
 
 # ╔═╡ d2c1d638-f2c1-4834-9235-a9d55dbaa866
-function efficiency(sample, num_samples)
-	return sum(sample)/num_samples ### Implement calculation of efficiency
-end
+efficiency = simulation.efficiency
 
 # ╔═╡ 6bb3a02f-4882-4626-9417-f3aa07521eb6
 eff_hm = efficiency(accepted_samples_hm, num_samples)### Calculate efficiency of Hit and miss method
@@ -639,147 +496,39 @@ Small deviations between the estimated values and the PDG values are expected du
 
 # ╔═╡ a86ea674-31a0-4285-9d33-84ffbdedeabd
 md"""
-# Exersice 3: Simulation of $J/\psi\rightarrow\mu^{+}\mu^{-}$ decay and reconstruction of muons momenta
+# Exercise 3: Simulation of $J/\psi\rightarrow\mu^{+}\mu^{-}$ decay and reconstruction of muons momenta
 """
 
 # ╔═╡ 2e8ccf97-d9f8-4683-8ad6-c9e2cdbbf80c
 # Function to compute 4-momentum vector with angles, momentum and mass
-function four_momentum(m, p, cos_theta, phi)
-    theta = acos(cos_theta)
-    
-    px = p * sin(theta) * cos(phi)
-    py = p * sin(theta) * sin(phi)
-    pz = p * cos(theta)
-    E = sqrt(c_1^2*p^2 + c_1^4*m^2)
-    
-    # Return the 4-momentum vector
-    return E, px, py, pz
-end
+four_momentum = simulation.four_momentum
 
 # ╔═╡ a69583de-164d-40c3-9562-134cdd19f6c5
 # Function to get  angles based on the momentum components
-function angles(px, py, pz)
-    # Step 1: Compute the total momentum magnitude p
-    p = sqrt(px^2 + py^2 + pz^2)
-    
-    # Step 2: Compute cos(theta) = pz / p
-    cos_theta = pz / p
-    
-    # Step 3: Compute phi = atan2(py, px) (azimuthal angle in radians)
-    phi = atan(py, px)
-    
-    # Return cos(theta) and phi
-    return cos_theta, phi
-end
+angles = simulation.angles
 
 # ╔═╡ 2467d8b6-0619-490f-baa2-da6a0fc8e99e
 # Function to calculate the momentum of the particle based on the circular trajectory in magnetic field given by two state vectors
-function momentum_from_circle(point1, point2, q, B)
-    t1, x1, y1, z1, E1, px1, py1, pz1 = point1
-    t2, x2, y2, z2, E2, px2, py2, pz2 = point2
-	
-    r1 = [x1, y1, z1]
-    r2 = [x2, y2, z2]
-    p1 = [px1, py1, pz1]
-    p2 = [px2, py2, pz2]
-
-	# Projection of the momenta on the plane that is perpendicular to the magnetic field
-    B_e = B / norm(B)
-	p1_par = dot(p1, B_e) * B_e
-    p2_par = dot(p2, B_e) * B_e
-    p1_perp = p1 - p1_par
-    p2_perp = p2 - p2_par
-
-	# Calculation of the distance between points in the plane that is perpendicular to the magnetic field
-	d = r2 - r1
-	d_perp = d - dot(d, B_e) * B_e
-
-    cos_theta = dot(p1_perp, p2_perp) / (norm(p1_perp) * norm(p2_perp))
-
-    R = norm(d_perp) / (2 * sqrt(abs(1 - abs(cos_theta)) / 2))
-	p = sqrt(norm(p2_par)^2 + (q * norm(B) * R)^2)
-	p = uconvert(u"GeV/c", p)
-
-
-    return R, p
-end
+momentum_from_circle = simulation.momentum_from_circle
 
 # ╔═╡ fff49acf-28ba-4ca4-8f47-e07dd32f446e
 # Function to calculate the radius of the circle given two state vectors
-function radius_of_circle(point1, point2)
-    t1, x1, y1, z1, E1, px1, py1, pz1 = point1
-    t2, x2, y2, z2, E2, px2, py2, pz2 = point2
-
-    d = sqrt((x2 - x1)^2 + (y2 - y1)^2 + (z2 - z1)^2)
-
-    p1 = [px1, py1, pz1]
-    p2 = [px2, py2, pz2]
-
-    p1_magnitude = norm(p1)
-    p2_magnitude = norm(p2)
-
-    cos_theta = dot(p1, p2) / (p1_magnitude * p2_magnitude)
-
-    R = d / (2 * abs(cos_theta))
-
-    return R
-end
+radius_of_circle = simulation.radius_of_circle
 
 # ╔═╡ 66832ec3-d47c-4ac6-b5ad-f8625a03d5b5
 # Function to compute momentum based on the radius of the circle through two points 
-function momentum_from_radius(R, q, B)
-	Bx, By, Bz = B
-    B = sqrt(Bx^2 + By^2 + Bz^2)
-
-    # Calculate the momentum p using p = qBr
-    p = q * B * R
-	p = uconvert(u"GeV/c", p)
-	
-    return p
-end
+momentum_from_radius = simulation.momentum_from_radius
 
 # ╔═╡ 57ce7bb6-ad24-44e3-8a02-460078a3325e
-const m_mu = 0.1057u"GeV/c^2"
+const m_mu = simulation.m_mu
 
 # ╔═╡ dc286863-bf42-40e0-974b-e3f229dcf2d5
 # Function to compute the momenta of two muons from the J/psi decay
-function jpsi_to_mumu(m_jpsi)
-    E_mu = m_jpsi*c_1^2 / 2  # Energy is half the invariant mass of J/psi
-    p_mu = sqrt(E_mu^2 - c_1^4*m_mu^2) / c_1
-    cos_theta = rand(Uniform(-1.0, 1.0))  # cos(θ) is uniformly distributed between -1 and 1
-    theta = acos(cos_theta)
-    phi = rand(Uniform(-π, π))  # φ is uniformly sampled between -π and π
-	
-    px = p_mu * sin(theta) * cos(phi)
-    py = p_mu * sin(theta) * sin(phi)
-    pz = p_mu * cos(theta)
-    
-    p1 = [uconvert(u"GeV", E_mu), uconvert(u"GeV/c", px), uconvert(u"GeV/c", py), uconvert(u"GeV/c", pz)]
-    p2 = [uconvert(u"GeV", E_mu), uconvert(u"GeV/c", -px), uconvert(u"GeV/c", -py), uconvert(u"GeV/c", -pz)]
-    
-    charge_muon_1 = rand(Bernoulli(0.5)) == 1 ? 1 : -1 # Randomly assign sign of muon
-    charge_muon_2 = -charge_muon_1  
-
-    if charge_muon_1 == -1 # Always return nagatively charged muon first
-        return p1, p2  
-    else
-        return p2, p1
-    end
-end
+jpsi_to_mumu = simulation.jpsi_to_mumu
 
 # ╔═╡ 3ba42e77-8b8e-49d7-9def-ad35a56bea19
 # Function to compute the invariant mass of J/psi from two muon 4-momenta
-function jpsi_from_mumu(p1, p2)
-    
-    E = p1[1] + p2[1]
-    px = p1[2] + p2[2]
-    py = p1[3] + p2[3]
-    pz = p1[4] + p2[4]
-
-    M_mumu = sqrt(E^2 - c_1^2*(px^2 + py^2 + pz^2)) / c_1^2
-	
-    return M_mumu
-end
+jpsi_from_mumu = simulation.jpsi_from_mumu
 
 # ╔═╡ 230f7f9a-d2b8-4e56-ae57-5e1aafa41678
 # Simulation of the J/psi decay to two muons and reconstraction of J/psi based on tracks of muons in the magnetic field

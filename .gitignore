@@ -1,0 +1,12 @@
+# Local editor and operating-system files
+.DS_Store
+.idea/
+.vscode/
+*~
+
+# Local Julia and generated export files
+.julia/
+*.jl.cov
+*.jl.mem
+notebooks/*.html
+figures/generated/
